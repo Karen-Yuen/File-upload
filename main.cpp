@@ -50,32 +50,24 @@ int copyFile (string source, string dest, CallBackFunc Report) { // callback pro
         ofstream outputFile(dest.c_str(), ios::out|ios::binary);        //open out stream
         char buffer [4096];
         initialFile.seekg(0,ios::beg);
-        if (fileSize<=sizeof(buffer)){
-            initialFile.read(buffer,fileSize);
-            outputFile.write(buffer,fileSize);
-            Report(fileSize); 
-            }
-        else {
-            int y = fileSize/4096;
-            int x = fileSize%4096;  
-            for(int i=1; i<=y+1; i++) {
-                if(i<=y){
-                    initialFile.read(buffer,4096);
-                    outputFile.write(buffer,4096);
-                    Report(i*4096);
-                }   
-                if(i==y+1){
-                    initialFile.read(buffer,x);
-                    outputFile.write(buffer,x);
-                    Report((i-1)*4096+x);
-                }
+        int y = fileSize/4096;
+        int x = fileSize%4096;  
+        for(int i=1; i<=y+1; i++) {
+            if(i<=y){
+                initialFile.read(buffer,4096);
+                outputFile.write(buffer,4096);
+                Report(i*4096);
+            }   
+            if(i==y+1){
+                initialFile.read(buffer,x);
+                outputFile.write(buffer,x);
+                Report((i-1)*4096+x);
             }
         }
         initialFile.close();
         outputFile.close();
         cout<< '\n';
-    }
-          
+    }   
     else{   
         cout<<"I couldn't open "<<source<<" for copying!\n";
 	return 0;
