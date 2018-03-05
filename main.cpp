@@ -26,6 +26,7 @@
 
 using namespace std;
 mutex mtx;
+mutex mtx2;
 //typedef function<void(int i)> CallBackFunc;
 typedef function<void(string,int i)> CallBackFunc;
 /*
@@ -86,7 +87,6 @@ void ByteReport(string fileName, int i){
 }
 
 int copyFile (string source, string dest, CallBackFunc Report) { // callback progressReport
-    mtx.lock();
     ifstream initialFile(source.c_str(), ios::in|ios::binary);
     if(initialFile.is_open()) {   
         initialFile.seekg(0, ios::end);
@@ -98,16 +98,20 @@ int copyFile (string source, string dest, CallBackFunc Report) { // callback pro
         int x = fileSize%4096; 
         for(int i=1; i<=y+1; i++) {
             if(i<=y){
+                mtx.lock();
                 initialFile.read(buffer,4096);
                 outputFile.write(buffer,4096);
                 //Report(i*4096);
                 Report(source,i*4096);
+                mtx.unlock();
             }   
             if(i==y+1){
+                mtx2.lock();
                 initialFile.read(buffer,x);
                 outputFile.write(buffer,x);
                 //Report((i-1)*4096+x);
                 Report(source,(i-1)*4096+x);
+                mtx2.unlock();
             }
         }
         initialFile.close();
@@ -118,7 +122,6 @@ int copyFile (string source, string dest, CallBackFunc Report) { // callback pro
 	return 0;
     }
     return 1;
-    mtx.unlock();
 }
 
 int main(int argc, char* argv[]) {
@@ -136,12 +139,17 @@ int main(int argc, char* argv[]) {
             cout << "Not exists directory " << argv[1] << "\n" << argv[1] << " is created.\n" ;    
         }
         result (argc, argv);
+        cout<<"----------------------------------------------------------------------------"<<endl;
         cout << "Filename | Size | Header (first 8 bytes)" << endl; 
         string targetPath(argv[1]);
         vector <future<int>> copyAsync;
         for (int i = 2; i<argc; i++) {
             string uploadfile(argv[i]); 
+            ifstream initialFile(uploadfile.c_str(), ios::in|ios::binary);
+            if(initialFile.is_open()) { 
+            string uploadfile(argv[i]); 
             displayFileInfo(uploadfile);
+            }
         }
         for (int i = 2; i<argc; i++) {
             string uploadfile(argv[i]); 
@@ -149,20 +157,25 @@ int main(int argc, char* argv[]) {
             copyAsync.push_back(async(copyFile, uploadfile, outputPath, ByteReport));
         }
         cout<<"----------------------------------------------------------------------------"<<endl;
+        
         for (int i = 2; i<argc; i++) {
             while (copyAsync[i-2].wait_for(std::chrono::seconds(0))==future_status::timeout){
                 for(auto iter = sentByte.begin(); iter != sentByte.end(); iter++){
-                    cout<<iter->first<<" "<<iter->second<<'\n';
+                    blankLine();
+                    blankLine();
+                cout<< "\e[A"<<iter->first<<" "<<iter->second<<'\t';
+                this_thread::sleep_for( chrono::milliseconds(100) ) ;
                 }
-                //this_thread::sleep_for( chrono::seconds(1) ) ;
+                
             }
         }
+        cout<<endl;
         copyAsync[argc-3].wait();
         for(auto iter = sentByte.begin(); iter != sentByte.end(); iter++){
-                    cout<<iter->first<<" "<<iter->second<<'\n';
+                    cout<<iter->first<<" "<<iter->second<<'\t';
         }
         
-            
+        cout<<endl;   
     }
     return 0;
 }
