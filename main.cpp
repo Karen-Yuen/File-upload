@@ -23,10 +23,15 @@
 #include <chrono> 
 #include <map>
 #include <mutex>
+#include <algorithm>
+#include <sstream>
+#include <iterator>
+#include <iomanip>
 
 using namespace std;
 mutex mtx;
 mutex mtx2;
+mutex mtx3;
 //typedef function<void(int i)> CallBackFunc;
 typedef function<void(string,int i)> CallBackFunc;
 /*
@@ -65,15 +70,13 @@ void displayFileInfo (string uploadFile) {
     }
     cout << uploadFile << " | "<<formatedSize<<sizeUnit<< " | "<<filSig;
     cout << " Hex: ";
-    for(int length = 0; length < strlen(filSig); length++)
-	{
-		printf("%x ", filSig[length]);
-	}
-    cout<<endl;
-}
-
-void blankLine () {
-    cout << endl; 
+    
+    string test(filSig);
+    ostringstream result;
+    result << setw(2) << setfill('0') << hex << uppercase;
+    copy(test.begin(), test.end(), ostream_iterator<unsigned int>(result, " "));
+    cout << result.str() << std::endl;
+    
 }
 
 map<string, int> sentByte;
@@ -124,6 +127,15 @@ int copyFile (string source, string dest, CallBackFunc Report) { // callback pro
     return 1;
 }
 
+double count100MilliSec (){
+    using namespace std::chrono;
+    high_resolution_clock::time_point t1 = high_resolution_clock::now();
+    this_thread::sleep_for( chrono::milliseconds(100) ) ;
+    high_resolution_clock::time_point t2 = high_resolution_clock::now();
+    duration<double> time_span = duration_cast<duration<double>>(t2 - t1);
+    return time_span.count();
+}
+
 int main(int argc, char* argv[]) {
     if (argc < 3) {
         cout << "Usage: ./upload <target_url> <file1> <file2> ... <fileN>\n";
@@ -151,31 +163,50 @@ int main(int argc, char* argv[]) {
             displayFileInfo(uploadfile);
             }
         }
+        mtx3.lock();
         for (int i = 2; i<argc; i++) {
+            
             string uploadfile(argv[i]); 
             string outputPath = targetPath + '/' + uploadfile;
             copyAsync.push_back(async(copyFile, uploadfile, outputPath, ByteReport));
         }
         cout<<"----------------------------------------------------------------------------"<<endl;
-        
-        for (int i = 2; i<argc; i++) {
-            while (copyAsync[i-2].wait_for(std::chrono::seconds(0))==future_status::timeout){
-                for(auto iter = sentByte.begin(); iter != sentByte.end(); iter++){
-                    blankLine();
-                    blankLine();
-                cout<< "\e[A"<<iter->first<<" "<<iter->second<<'\t';
-                this_thread::sleep_for( chrono::milliseconds(100) ) ;
+        using namespace std::chrono;
+        high_resolution_clock::time_point startTime = high_resolution_clock::now();
+        high_resolution_clock::time_point afterWhile;
+        duration<double> time_span;                                                 //time passed
+        vector <bool> Done (argc-2);                                                //check task done or not;
+        int coutingOf3=1;
+        for (int n = 1; n <= 1000; n++) {
+            for (int i = 2; i<argc; i++) {
+                if (copyAsync[i-2].wait_for(chrono::milliseconds(0))==std::future_status::timeout){
+                    Done[i-2]=false;
                 }
-                
+                else {
+                    Done[i-2]=true;
+                }
+            }
+            if ( find(Done.begin(), Done.end(), false) != Done.end() ){
+                this_thread::sleep_for( chrono::milliseconds(100) );
+            }
+            else if ( find(Done.begin(), Done.end(), false) == Done.end() ){
+                break;
+            }
+            afterWhile = high_resolution_clock::now();
+            time_span = duration_cast<duration<double>>(afterWhile - startTime);
+            if (time_span.count()>(0.3*coutingOf3)){
+              for(auto iter = sentByte.begin(); iter != sentByte.end(); iter++){
+                    cout<<iter->first<<" "<<iter->second<<'\n';
+                }
+              coutingOf3++;
             }
         }
-        cout<<endl;
-        copyAsync[argc-3].wait();
-        for(auto iter = sentByte.begin(); iter != sentByte.end(); iter++){
-                    cout<<iter->first<<" "<<iter->second<<'\t';
+        cout<<"--------------------\n"<<"Summary:" <<endl;                                                 
+        for(auto iter = sentByte.begin(); iter != sentByte.end(); iter++){   //summary
+                    cout<<iter->first<<"|"<<iter->second<<'\n';
         }
-        
-        cout<<endl;   
+        cout << "Total Time: " << time_span.count() <<endl;
+        mtx3.unlock();  
     }
     return 0;
 }
