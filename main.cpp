@@ -30,8 +30,6 @@
 
 using namespace std;
 mutex mtx;
-mutex mtx2;
-mutex mtx3;
 //typedef function<void(int i)> CallBackFunc;
 typedef function<void(string,int i)> CallBackFunc;
 /*
@@ -68,15 +66,14 @@ void displayFileInfo (string uploadFile) {
         formatedSize = fileSize/1048576;
         sizeUnit = "MB";
     }
-    cout << uploadFile << " | "<<formatedSize<<sizeUnit<< " | "<<filSig;
-    cout << " Hex: ";
+    cout << uploadFile << " | "<<formatedSize<<sizeUnit<< " | ";
     
-    string test(filSig);
-    ostringstream result;
-    result << setw(2) << setfill('0') << hex << uppercase;
-    copy(test.begin(), test.end(), ostream_iterator<unsigned int>(result, " "));
-    cout << result.str() << std::endl;
-    
+    vector<short> myVector(8);
+    copy ( filSig, filSig+7, myVector.begin() );
+    for (vector<short>::iterator it = myVector.begin(); it!=myVector.end(); ++it){
+        cout << ' ' <<hex<<uppercase<<setw(2)<<setfill('0')<< *it;
+    }
+    cout<<endl;
 }
 
 map<string, int> sentByte;
@@ -101,20 +98,16 @@ int copyFile (string source, string dest, CallBackFunc Report) { // callback pro
         int x = fileSize%4096; 
         for(int i=1; i<=y+1; i++) {
             if(i<=y){
-                mtx.lock();
                 initialFile.read(buffer,4096);
                 outputFile.write(buffer,4096);
                 //Report(i*4096);
                 Report(source,i*4096);
-                mtx.unlock();
             }   
             if(i==y+1){
-                mtx2.lock();
                 initialFile.read(buffer,x);
                 outputFile.write(buffer,x);
                 //Report((i-1)*4096+x);
                 Report(source,(i-1)*4096+x);
-                mtx2.unlock();
             }
         }
         initialFile.close();
@@ -163,21 +156,21 @@ int main(int argc, char* argv[]) {
             displayFileInfo(uploadfile);
             }
         }
-        mtx3.lock();
+        mtx.lock();
         for (int i = 2; i<argc; i++) {
             
             string uploadfile(argv[i]); 
             string outputPath = targetPath + '/' + uploadfile;
             copyAsync.push_back(async(copyFile, uploadfile, outputPath, ByteReport));
         }
-        cout<<"----------------------------------------------------------------------------"<<endl;
+        cout<<dec<<"----------------------------------------------------------------------------"<<endl;
         using namespace std::chrono;
         high_resolution_clock::time_point startTime = high_resolution_clock::now();
         high_resolution_clock::time_point afterWhile;
         duration<double> time_span;                                                 //time passed
         vector <bool> Done (argc-2);                                                //check task done or not;
         int coutingOf3=1;
-        for (int n = 1; n <= 1000; n++) {
+        for (int n = 1; n <= 6000; n++) {
             for (int i = 2; i<argc; i++) {
                 if (copyAsync[i-2].wait_for(chrono::milliseconds(0))==std::future_status::timeout){
                     Done[i-2]=false;
@@ -203,10 +196,10 @@ int main(int argc, char* argv[]) {
         }
         cout<<"--------------------\n"<<"Summary:" <<endl;                                                 
         for(auto iter = sentByte.begin(); iter != sentByte.end(); iter++){   //summary
-                    cout<<iter->first<<"|"<<iter->second<<'\n';
+                    cout<<iter->first<<" | "<<iter->second<<'\n';
         }
         cout << "Total Time: " << time_span.count() <<endl;
-        mtx3.unlock();  
+        mtx.unlock();  
     }
     return 0;
 }
