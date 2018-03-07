@@ -32,6 +32,7 @@ using namespace std;
 mutex mtx;
 //typedef function<void(int i)> CallBackFunc;
 typedef function<void(string,int i)> CallBackFunc;
+typedef char input [3];
 /*
  * 
  */
@@ -67,12 +68,13 @@ void displayFileInfo (string uploadFile) {
         sizeUnit = "MB";
     }
     cout << uploadFile << " | "<<formatedSize<<sizeUnit<< " | ";
-    
-    vector<short> myVector(8);
-    copy ( filSig, filSig+7, myVector.begin() );
-    for (vector<short>::iterator it = myVector.begin(); it!=myVector.end(); ++it){
-        cout << ' ' <<hex<<uppercase<<setw(2)<<setfill('0')<< *it;
-    }
+    vector<int> myVector (filSig , filSig+7);
+    for (vector<int>::iterator it = myVector.begin(); it!=myVector.end(); ++it){
+        if (*it<0){
+            *it=*it+256;
+        }
+        cout << ' ' <<hex<<uppercase<<setw(2)<<setfill('0')<<(short) *it;
+    }    
     cout<<endl;
 }
 
