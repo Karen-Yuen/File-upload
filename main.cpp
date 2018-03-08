@@ -32,7 +32,6 @@ using namespace std;
 mutex mtx;
 //typedef function<void(int i)> CallBackFunc;
 typedef function<void(string,int i)> CallBackFunc;
-typedef char input [3];
 /*
  * 
  */
@@ -47,14 +46,14 @@ void result (int argc, char* argv[]) {
     } 
 }
 
-void displayFileInfo (string uploadFile) {
-    ifstream file(uploadFile.c_str(), ios::binary|ios::ate);
-    double fileSize = file.tellg();
-    file.seekg(0, ios::beg);
-    char filSig[9];
-    file.read(filSig,8);
-    string sizeUnit; 
+struct fileSizeDisplay {
+    double fileSizeByte;
+    string fileSizeUnit;
+};
+ 
+fileSizeDisplay formatedFileSize (double fileSize){
     double formatedSize;
+    string sizeUnit; 
     if (fileSize<1024){
         formatedSize = fileSize;
         sizeUnit = "bytes";
@@ -67,8 +66,18 @@ void displayFileInfo (string uploadFile) {
         formatedSize = fileSize/1048576;
         sizeUnit = "MB";
     }
-    cout << uploadFile << " | "<<formatedSize<<sizeUnit<< " | ";
-    vector<int> myVector (filSig , filSig+7);
+    return fileSizeDisplay{formatedSize, sizeUnit};
+}
+
+void displayFileInfo (string uploadFile) {
+    ifstream file(uploadFile.c_str(), ios::binary|ios::ate);
+    double fileSize = file.tellg();
+    file.seekg(0, ios::beg);
+    char filSig[9];
+    file.read(filSig,8);
+    fileSizeDisplay result = formatedFileSize(fileSize);
+    cout << uploadFile << " | "<<result.fileSizeByte<<result.fileSizeUnit<< " |";
+    vector<int> myVector (filSig , filSig+8);
     for (vector<int>::iterator it = myVector.begin(); it!=myVector.end(); ++it){
         if (*it<0){
             *it=*it+256;
@@ -78,14 +87,15 @@ void displayFileInfo (string uploadFile) {
     cout<<endl;
 }
 
-map<string, int> sentByte;
+struct sentingReport {
+    int sentByte;
+    std::chrono::high_resolution_clock::time_point sentTime;
+};
 
-void progressReport(int i){ 
-    cout<< "\e[A"<< i <<" byte is done."<<endl;
-}
+map<string, sentingReport> progressReport;
 
-void ByteReport(string fileName, int i){ 
-    sentByte[fileName] = i;
+void sentProgressReport(string fileName, int i){ 
+    progressReport[fileName] = {i, std::chrono::high_resolution_clock::now()};
 }
 
 int copyFile (string source, string dest, CallBackFunc Report) { // callback progressReport
@@ -102,13 +112,11 @@ int copyFile (string source, string dest, CallBackFunc Report) { // callback pro
             if(i<=y){
                 initialFile.read(buffer,4096);
                 outputFile.write(buffer,4096);
-                //Report(i*4096);
                 Report(source,i*4096);
             }   
             if(i==y+1){
                 initialFile.read(buffer,x);
                 outputFile.write(buffer,x);
-                //Report((i-1)*4096+x);
                 Report(source,(i-1)*4096+x);
             }
         }
@@ -122,26 +130,18 @@ int copyFile (string source, string dest, CallBackFunc Report) { // callback pro
     return 1;
 }
 
-double count100MilliSec (){
-    using namespace std::chrono;
-    high_resolution_clock::time_point t1 = high_resolution_clock::now();
-    this_thread::sleep_for( chrono::milliseconds(100) ) ;
-    high_resolution_clock::time_point t2 = high_resolution_clock::now();
-    duration<double> time_span = duration_cast<duration<double>>(t2 - t1);
-    return time_span.count();
-}
-
 int main(int argc, char* argv[]) {
-    if (argc < 3) {
+    using namespace std::chrono;
+    if (argc < 3) {                         //check argument count
         cout << "Usage: ./upload <target_url> <file1> <file2> ... <fileN>\n";
     }
     else {
         struct stat statStruct;
         stat(argv[1], &statStruct);
-        if(S_ISDIR(statStruct.st_mode)) {
+        if(S_ISDIR(statStruct.st_mode)) {                                 //check directory
             cout << "exists directory " << argv[1] <<endl;
         }
-        else {
+        else {                                                              //make directory
             mkdir(argv[1], S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
             cout << "Not exists directory " << argv[1] << "\n" << argv[1] << " is created.\n" ;    
         }
@@ -150,26 +150,25 @@ int main(int argc, char* argv[]) {
         cout << "Filename | Size | Header (first 8 bytes)" << endl; 
         string targetPath(argv[1]);
         vector <future<int>> copyAsync;
-        for (int i = 2; i<argc; i++) {
-            string uploadfile(argv[i]); 
+        for (int i = 2; i<argc; i++) {                      
+            string uploadfile(argv[i]);                                                 //confirm file valid
             ifstream initialFile(uploadfile.c_str(), ios::in|ios::binary);
             if(initialFile.is_open()) { 
             string uploadfile(argv[i]); 
-            displayFileInfo(uploadfile);
+            displayFileInfo(uploadfile);                                                //display file info
             }
         }
         mtx.lock();
+        high_resolution_clock::time_point startTime = high_resolution_clock::now();             //timer started
         for (int i = 2; i<argc; i++) {
             
             string uploadfile(argv[i]); 
             string outputPath = targetPath + '/' + uploadfile;
-            copyAsync.push_back(async(copyFile, uploadfile, outputPath, ByteReport));
+            copyAsync.push_back(async(copyFile, uploadfile, outputPath, sentProgressReport));
         }
         cout<<dec<<"----------------------------------------------------------------------------"<<endl;
-        using namespace std::chrono;
-        high_resolution_clock::time_point startTime = high_resolution_clock::now();
-        high_resolution_clock::time_point afterWhile;
-        duration<double> time_span;                                                 //time passed
+        high_resolution_clock::time_point afterWhile;                               //set timer to count the report interval; 
+        duration<double> time_span;                                                 //count passed time 
         vector <bool> Done (argc-2);                                                //check task done or not;
         int coutingOf3=1;
         for (int n = 1; n <= 6000; n++) {
@@ -183,24 +182,29 @@ int main(int argc, char* argv[]) {
             }
             if ( find(Done.begin(), Done.end(), false) != Done.end() ){
                 this_thread::sleep_for( chrono::milliseconds(100) );
+                afterWhile = high_resolution_clock::now(); 
             }
             else if ( find(Done.begin(), Done.end(), false) == Done.end() ){
+                afterWhile = high_resolution_clock::now(); 
                 break;
             }
-            afterWhile = high_resolution_clock::now();
             time_span = duration_cast<duration<double>>(afterWhile - startTime);
             if (time_span.count()>(0.3*coutingOf3)){
-              for(auto iter = sentByte.begin(); iter != sentByte.end(); iter++){
-                    cout<<iter->first<<" "<<iter->second<<'\n';
+                for(auto iter = progressReport.begin(); iter != progressReport.end(); iter++){
+                    fileSizeDisplay result = formatedFileSize((iter->second).sentByte); 
+                    cout<<iter->first<<" "<<result.fileSizeByte<<result.fileSizeUnit<<'\n';
                 }
               coutingOf3++;
             }
         }
-        cout<<"--------------------\n"<<"Summary:" <<endl;                                                 
-        for(auto iter = sentByte.begin(); iter != sentByte.end(); iter++){   //summary
-                    cout<<iter->first<<" | "<<iter->second<<'\n';
+        cout<<"--------------------\n"<<"Summary:" <<endl;                                                                         
+        for(auto iter = progressReport.begin(); iter != progressReport.end(); iter++){   //summary
+            fileSizeDisplay result = formatedFileSize((iter->second).sentByte);        
+            cout<<iter->first<<" | "<<result.fileSizeByte<<result.fileSizeUnit<<" | ";
+            duration<double> time_span = duration_cast<duration<double>>((iter->second).sentTime - startTime);
+            cout<<time_span.count()<<" sec"<<endl;
         }
-        cout << "Total Time: " << time_span.count() <<endl;
+        cout << "Time Taken: " << time_span.count()<<" sec" <<endl;
         mtx.unlock();  
     }
     return 0;
