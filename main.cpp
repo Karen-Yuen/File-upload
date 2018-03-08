@@ -17,7 +17,6 @@
 #include <string>
 #include <sys/stat.h>
 #include <functional>
-#include <thread>
 #include <future>
 #include <vector>
 #include <chrono> 
@@ -27,30 +26,24 @@
 #include <sstream>
 #include <iterator>
 #include <iomanip>
+#include "fileSizeDisplay.hpp"
+#include "sentingReport.hpp"
 
 using namespace std;
 mutex mtx;
-//typedef function<void(int i)> CallBackFunc;
 typedef function<void(string,int i)> CallBackFunc;
 /*
  * 
  */
 void result (int argc, char* argv[]) {       
     cout << "Target URL: " << argv[1] << '\n'; 
-    //count how many files be uploaded 
-    unsigned int count = argc - 2 ;
+    unsigned int count = argc - 2 ;                         //count how many files be uploaded 
     cout << "Total " << count << " files:\n";
-    //output file names
-    for (int i=2; i<argc; i++) {
+    for (int i=2; i<argc; i++) {                            //output file names
     cout << argv[i] << '\n'; 
     } 
 }
 
-struct fileSizeDisplay {
-    double fileSizeByte;
-    string fileSizeUnit;
-};
- 
 fileSizeDisplay formatedFileSize (double fileSize){
     double formatedSize;
     string sizeUnit; 
@@ -87,11 +80,6 @@ void displayFileInfo (string uploadFile) {
     cout<<endl;
 }
 
-struct sentingReport {
-    int sentByte;
-    std::chrono::high_resolution_clock::time_point sentTime;
-};
-
 map<string, sentingReport> progressReport;
 
 void sentProgressReport(string fileName, int i){ 
@@ -124,7 +112,7 @@ int copyFile (string source, string dest, CallBackFunc Report) { // callback pro
         outputFile.close();
     }   
     else{   
-        cout<<source<<"cannot be opened for copying!\n";
+        cout<<source<<" cannot be opened for copying!\n";
 	return 0;
     }
     return 1;
@@ -167,7 +155,8 @@ int main(int argc, char* argv[]) {
             copyAsync.push_back(async(copyFile, uploadfile, outputPath, sentProgressReport));
         }
         cout<<dec<<"----------------------------------------------------------------------------"<<endl;
-        high_resolution_clock::time_point afterWhile;                               //set timer to count the report interval; 
+        cout<<"Progress Report:"<<endl;
+        high_resolution_clock::time_point afterWhile;                               //set timer to check progress/ count the report interval; 
         duration<double> time_span;                                                 //count passed time 
         vector <bool> Done (argc-2);                                                //check task done or not;
         int coutingOf3=1;
@@ -186,9 +175,11 @@ int main(int argc, char* argv[]) {
             }
             else if ( find(Done.begin(), Done.end(), false) == Done.end() ){
                 afterWhile = high_resolution_clock::now(); 
+                cout<<"Upload Completed!"<<endl;
                 break;
             }
             time_span = duration_cast<duration<double>>(afterWhile - startTime);
+            
             if (time_span.count()>(0.3*coutingOf3)){
                 for(auto iter = progressReport.begin(); iter != progressReport.end(); iter++){
                     fileSizeDisplay result = formatedFileSize((iter->second).sentByte); 
