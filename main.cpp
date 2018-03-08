@@ -124,7 +124,7 @@ int copyFile (string source, string dest, CallBackFunc Report) { // callback pro
         outputFile.close();
     }   
     else{   
-        cout<<"I couldn't open "<<source<<" for copying!\n";
+        cout<<source<<"cannot be opened for copying!\n";
 	return 0;
     }
     return 1;
@@ -205,7 +205,7 @@ int main(int argc, char* argv[]) {
             cout<<time_span.count()<<" sec"<<endl;
         }
         cout << "Time Taken: " << time_span.count()<<" sec" <<endl;
-        mtx.unlock();  
+        mtx.unlock();
     }
     return 0;
 }
