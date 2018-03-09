@@ -5,7 +5,7 @@
  */
 
 /* 
- * File:   sentingReport.hpp
+ * File:   SentingReport.hpp
  * Author: karenyuen
  *
  * Created on March 8, 2018, 2:49 PM
@@ -16,7 +16,7 @@
 
 using namespace std; 
 
-struct sentingReport {
+struct SentingReport {
     int sentByte;
     std::chrono::high_resolution_clock::time_point sentTime;
 };

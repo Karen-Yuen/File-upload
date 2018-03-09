@@ -26,49 +26,28 @@
 #include <sstream>
 #include <iterator>
 #include <iomanip>
-#include "fileSizeDisplay.hpp"
-#include "sentingReport.hpp"
+#include "FileSizeDisplay.hpp"
+#include "SentingReport.hpp"
 
 using namespace std;
-mutex mtx;
-typedef function<void(string,int i)> CallBackFunc;
+typedef function<void(string,int i)> callBackFunc;
 /*
- * 
+ * result (argv[1], fileCount ,fileName);
  */
-void result (int argc, char* argv[]) {       
-    cout << "Target URL: " << argv[1] << '\n'; 
-    unsigned int count = argc - 2 ;                         //count how many files be uploaded 
-    cout << "Total " << count << " files:\n";
-    for (int i=2; i<argc; i++) {                            //output file names
-    cout << argv[i] << '\n'; 
+void result (string targetURL, int fileCount, vector <string> filename) {       
+    cout << "Target URL: " << targetURL << '\n'; 
+    cout << "Total " << fileCount << " files:\n";
+    for (vector<string>::iterator it = filename.begin() ; it != filename.end(); ++it) {                            //output file names
+        cout << *it << '\n'; 
     } 
 }
-
-fileSizeDisplay formatedFileSize (double fileSize){
-    double formatedSize;
-    string sizeUnit; 
-    if (fileSize<1024){
-        formatedSize = fileSize;
-        sizeUnit = "bytes";
-    }
-    if (fileSize>1024 && fileSize<1048576){
-        formatedSize = fileSize/1024;
-        sizeUnit = "KB";
-    }
-    if (fileSize>1048576){
-        formatedSize = fileSize/1048576;
-        sizeUnit = "MB";
-    }
-    return fileSizeDisplay{formatedSize, sizeUnit};
-}
-
 void displayFileInfo (string uploadFile) {
     ifstream file(uploadFile.c_str(), ios::binary|ios::ate);
     double fileSize = file.tellg();
     file.seekg(0, ios::beg);
     char filSig[9];
     file.read(filSig,8);
-    fileSizeDisplay result = formatedFileSize(fileSize);
+    FileSizeDisplay result = formatedFileSize(fileSize);
     cout << uploadFile << " | "<<result.fileSizeByte<<result.fileSizeUnit<< " |";
     vector<int> myVector (filSig , filSig+8);
     for (vector<int>::iterator it = myVector.begin(); it!=myVector.end(); ++it){
@@ -80,13 +59,13 @@ void displayFileInfo (string uploadFile) {
     cout<<endl;
 }
 
-map<string, sentingReport> progressReport;
+map<string, SentingReport> progressReport;
 
 void sentProgressReport(string fileName, int i){ 
     progressReport[fileName] = {i, std::chrono::high_resolution_clock::now()};
 }
 
-int copyFile (string source, string dest, CallBackFunc Report) { // callback progressReport
+int copyFile (string source, string dest, callBackFunc report) { // callback progressReport
     ifstream initialFile(source.c_str(), ios::in|ios::binary);
     if(initialFile.is_open()) {   
         initialFile.seekg(0, ios::end);
@@ -100,12 +79,12 @@ int copyFile (string source, string dest, CallBackFunc Report) { // callback pro
             if(i<=y){
                 initialFile.read(buffer,4096);
                 outputFile.write(buffer,4096);
-                Report(source,i*4096);
+                report(source,i*4096);
             }   
             if(i==y+1){
                 initialFile.read(buffer,x);
                 outputFile.write(buffer,x);
-                Report(source,(i-1)*4096+x);
+                report(source,(i-1)*4096+x);
             }
         }
         initialFile.close();
@@ -124,49 +103,48 @@ int main(int argc, char* argv[]) {
         cout << "Usage: ./upload <target_url> <file1> <file2> ... <fileN>\n";
     }
     else {
+        string targetURL(argv[1]);
+        int fileCount = argc - 2;
+        vector <string> fileName (argv+2, argv+argc);
         struct stat statStruct;
         stat(argv[1], &statStruct);
         if(S_ISDIR(statStruct.st_mode)) {                                 //check directory
-            cout << "exists directory " << argv[1] <<endl;
+            cout << "exists directory " << targetURL <<endl;
         }
         else {                                                              //make directory
             mkdir(argv[1], S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-            cout << "Not exists directory " << argv[1] << "\n" << argv[1] << " is created.\n" ;    
+            cout << "Not exists directory " << targetURL << "\n" << targetURL << " is created.\n" ;    
         }
-        result (argc, argv);
+        result (targetURL, fileCount ,fileName);
         cout<<"----------------------------------------------------------------------------"<<endl;
         cout << "Filename | Size | Header (first 8 bytes)" << endl; 
-        string targetPath(argv[1]);
         vector <future<int>> copyAsync;
-        for (int i = 2; i<argc; i++) {                      
-            string uploadfile(argv[i]);                                                 //confirm file valid
-            ifstream initialFile(uploadfile.c_str(), ios::in|ios::binary);
+        for (int i = 0; i<fileCount; i++) {                                               //confirm file valid
+            ifstream initialFile(fileName[i].c_str(), ios::in|ios::binary);
             if(initialFile.is_open()) { 
-            string uploadfile(argv[i]); 
-            displayFileInfo(uploadfile);                                                //display file info
+            displayFileInfo(fileName[i]);                                                //display file info
             }
         }
+        mutex mtx;
         mtx.lock();
         high_resolution_clock::time_point startTime = high_resolution_clock::now();             //timer started
-        for (int i = 2; i<argc; i++) {
-            
-            string uploadfile(argv[i]); 
-            string outputPath = targetPath + '/' + uploadfile;
-            copyAsync.push_back(async(copyFile, uploadfile, outputPath, sentProgressReport));
+        for (int i = 0; i<fileCount; i++) {
+            string outputPath = targetURL + '/' + fileName[i];
+            copyAsync.push_back(async(copyFile, fileName[i], outputPath, sentProgressReport));
         }
         cout<<dec<<"----------------------------------------------------------------------------"<<endl;
         cout<<"Progress Report:"<<endl;
         high_resolution_clock::time_point afterWhile;                               //set timer to check progress/ count the report interval; 
         duration<double> time_span;                                                 //count passed time 
-        vector <bool> Done (argc-2);                                                //check task done or not;
+        vector <bool> Done (fileCount);                                                //check task done or not;
         int coutingOf3=1;
         for (int n = 1; n <= 6000; n++) {
-            for (int i = 2; i<argc; i++) {
-                if (copyAsync[i-2].wait_for(chrono::milliseconds(0))==std::future_status::timeout){
-                    Done[i-2]=false;
+            for (int i = 0; i<fileCount; i++) {
+                if (copyAsync[i].wait_for(chrono::milliseconds(0))==std::future_status::timeout){
+                    Done[i]=false;
                 }
                 else {
-                    Done[i-2]=true;
+                    Done[i]=true;
                 }
             }
             if ( find(Done.begin(), Done.end(), false) != Done.end() ){
@@ -182,7 +160,7 @@ int main(int argc, char* argv[]) {
             
             if (time_span.count()>(0.3*coutingOf3)){
                 for(auto iter = progressReport.begin(); iter != progressReport.end(); iter++){
-                    fileSizeDisplay result = formatedFileSize((iter->second).sentByte); 
+                    FileSizeDisplay result = formatedFileSize((iter->second).sentByte); 
                     cout<<iter->first<<" "<<result.fileSizeByte<<result.fileSizeUnit<<'\n';
                 }
               coutingOf3++;
@@ -190,7 +168,7 @@ int main(int argc, char* argv[]) {
         }
         cout<<"--------------------\n"<<"Summary:" <<endl;                                                                         
         for(auto iter = progressReport.begin(); iter != progressReport.end(); iter++){   //summary
-            fileSizeDisplay result = formatedFileSize((iter->second).sentByte);        
+            FileSizeDisplay result = formatedFileSize((iter->second).sentByte);        
             cout<<iter->first<<" | "<<result.fileSizeByte<<result.fileSizeUnit<<" | ";
             duration<double> time_span = duration_cast<duration<double>>((iter->second).sentTime - startTime);
             cout<<time_span.count()<<" sec"<<endl;
