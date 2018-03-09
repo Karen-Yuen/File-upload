@@ -26,13 +26,15 @@
 #include <sstream>
 #include <iterator>
 #include <iomanip>
+#include <thread>
 #include "FileSizeDisplay.hpp"
 #include "SentingReport.hpp"
 
 using namespace std;
-typedef function<void(string,int i)> callBackFunc;
+typedef map<string, SentingReport> progressReport;
+typedef function<void(string fileName,int i,progressReport &fileProgressReport)> callBackFunc;
 /*
- * result (argv[1], fileCount ,fileName);
+ * 
  */
 void result (string targetURL, int fileCount, vector <string> filename) {       
     cout << "Target URL: " << targetURL << '\n'; 
@@ -59,13 +61,11 @@ void displayFileInfo (string uploadFile) {
     cout<<endl;
 }
 
-map<string, SentingReport> progressReport;
-
-void sentProgressReport(string fileName, int i){ 
-    progressReport[fileName] = {i, std::chrono::high_resolution_clock::now()};
+void sentProgressReport(string fileName, int i, progressReport &fileProgressReport){ 
+    fileProgressReport[fileName] = {i, std::chrono::high_resolution_clock::now()};
 }
 
-int copyFile (string source, string dest, callBackFunc report) { // callback progressReport
+int copyFile (string source, string dest, callBackFunc report, progressReport &fileProgressReport) { // callback progressReport
     ifstream initialFile(source.c_str(), ios::in|ios::binary);
     if(initialFile.is_open()) {   
         initialFile.seekg(0, ios::end);
@@ -79,12 +79,12 @@ int copyFile (string source, string dest, callBackFunc report) { // callback pro
             if(i<=y){
                 initialFile.read(buffer,4096);
                 outputFile.write(buffer,4096);
-                report(source,i*4096);
+                report(source,i*4096, fileProgressReport);
             }   
             if(i==y+1){
                 initialFile.read(buffer,x);
                 outputFile.write(buffer,x);
-                report(source,(i-1)*4096+x);
+                report(source,(i-1)*4096+x, fileProgressReport);
             }
         }
         initialFile.close();
@@ -118,19 +118,20 @@ int main(int argc, char* argv[]) {
         result (targetURL, fileCount ,fileName);
         cout<<"----------------------------------------------------------------------------"<<endl;
         cout << "Filename | Size | Header (first 8 bytes)" << endl; 
-        vector <future<int>> copyAsync;
         for (int i = 0; i<fileCount; i++) {                                               //confirm file valid
             ifstream initialFile(fileName[i].c_str(), ios::in|ios::binary);
             if(initialFile.is_open()) { 
             displayFileInfo(fileName[i]);                                                //display file info
             }
         }
+        progressReport fileProgressReport;
+        vector <future<int>> copyAsync;
         mutex mtx;
         mtx.lock();
         high_resolution_clock::time_point startTime = high_resolution_clock::now();             //timer started
         for (int i = 0; i<fileCount; i++) {
             string outputPath = targetURL + '/' + fileName[i];
-            copyAsync.push_back(async(copyFile, fileName[i], outputPath, sentProgressReport));
+            copyAsync.push_back(async(copyFile, fileName[i], outputPath, sentProgressReport, ref(fileProgressReport)));
         }
         cout<<dec<<"----------------------------------------------------------------------------"<<endl;
         cout<<"Progress Report:"<<endl;
@@ -159,7 +160,7 @@ int main(int argc, char* argv[]) {
             time_span = duration_cast<duration<double>>(afterWhile - startTime);
             
             if (time_span.count()>(0.3*coutingOf3)){
-                for(auto iter = progressReport.begin(); iter != progressReport.end(); iter++){
+                for(auto iter = fileProgressReport.begin(); iter != fileProgressReport.end(); iter++){
                     FileSizeDisplay result = formatedFileSize((iter->second).sentByte); 
                     cout<<iter->first<<" "<<result.fileSizeByte<<result.fileSizeUnit<<'\n';
                 }
@@ -167,7 +168,7 @@ int main(int argc, char* argv[]) {
             }
         }
         cout<<"--------------------\n"<<"Summary:" <<endl;                                                                         
-        for(auto iter = progressReport.begin(); iter != progressReport.end(); iter++){   //summary
+        for(auto iter = fileProgressReport.begin(); iter != fileProgressReport.end(); iter++){   //summary
             FileSizeDisplay result = formatedFileSize((iter->second).sentByte);        
             cout<<iter->first<<" | "<<result.fileSizeByte<<result.fileSizeUnit<<" | ";
             duration<double> time_span = duration_cast<duration<double>>((iter->second).sentTime - startTime);
