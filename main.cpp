@@ -20,8 +20,6 @@
 #include <future>
 #include <vector>
 #include <chrono> 
-#include <map>
-#include <mutex>
 #include <algorithm>
 #include <sstream>
 #include <iterator>
@@ -29,14 +27,13 @@
 #include <thread>
 #include "FileSizeDisplay.hpp"
 #include "SentingReport.hpp"
+#include "ReportOfUpload.hpp"
 
 using namespace std;
-typedef map<string, SentingReport> progressReport;
-typedef function<void(string fileName,int i,progressReport &fileProgressReport)> callBackFunc;
 /*
  * 
  */
-void result (string targetURL, int fileCount, vector <string> filename) {       
+void detailsOfUpload (string targetURL, int fileCount, vector <string> filename) {       
     cout << "Target URL: " << targetURL << '\n'; 
     cout << "Total " << fileCount << " files:\n";
     for (vector<string>::iterator it = filename.begin() ; it != filename.end(); ++it) {                            //output file names
@@ -61,11 +58,12 @@ void displayFileInfo (string uploadFile) {
     cout<<endl;
 }
 
-void sentProgressReport(string fileName, int i, progressReport &fileProgressReport){ 
-    fileProgressReport[fileName] = {i, std::chrono::high_resolution_clock::now()};
+double fileSize (string uploadFile){
+    ifstream file(uploadFile.c_str(), ios::binary|ios::ate);
+    return file.tellg();
 }
 
-int copyFile (string source, string dest, callBackFunc report, progressReport &fileProgressReport) { // callback progressReport
+int copyFile (string source, string dest, ReportOfUpload &fileProgressReport) { // callback progressReport
     ifstream initialFile(source.c_str(), ios::in|ios::binary);
     if(initialFile.is_open()) {   
         initialFile.seekg(0, ios::end);
@@ -79,12 +77,12 @@ int copyFile (string source, string dest, callBackFunc report, progressReport &f
             if(i<=y){
                 initialFile.read(buffer,4096);
                 outputFile.write(buffer,4096);
-                report(source,i*4096, fileProgressReport);
+                fileProgressReport.writeProgressReport(source,i*4096);
             }   
             if(i==y+1){
                 initialFile.read(buffer,x);
                 outputFile.write(buffer,x);
-                report(source,(i-1)*4096+x, fileProgressReport);
+                fileProgressReport.writeProgressReport(source,(i-1)*4096+x);
             }
         }
         initialFile.close();
@@ -115,67 +113,65 @@ int main(int argc, char* argv[]) {
             mkdir(argv[1], S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
             cout << "Not exists directory " << targetURL << "\n" << targetURL << " is created.\n" ;    
         }
-        result (targetURL, fileCount ,fileName);
+        detailsOfUpload (targetURL, fileCount ,fileName);
         cout<<"----------------------------------------------------------------------------"<<endl;
         cout << "Filename | Size | Header (first 8 bytes)" << endl; 
         for (int i = 0; i<fileCount; i++) {                                               //confirm file valid
             ifstream initialFile(fileName[i].c_str(), ios::in|ios::binary);
             if(initialFile.is_open()) { 
-            displayFileInfo(fileName[i]);                                                //display file info
+                displayFileInfo(fileName[i]);                                                //display file info
             }
         }
-        progressReport fileProgressReport;
-        vector <future<int>> copyAsync;
-        mutex mtx;
-        mtx.lock();
+        ReportOfUpload fileProgressReport;                                                      //create map
+        vector <future<int>> copyAsync;                                                         //create async object
         high_resolution_clock::time_point startTime = high_resolution_clock::now();             //timer started
+        
         for (int i = 0; i<fileCount; i++) {
             string outputPath = targetURL + '/' + fileName[i];
-            copyAsync.push_back(async(copyFile, fileName[i], outputPath, sentProgressReport, ref(fileProgressReport)));
+            copyAsync.push_back(async(copyFile, fileName[i], outputPath, ref(fileProgressReport)));         //copy file + write report
         }
         cout<<dec<<"----------------------------------------------------------------------------"<<endl;
         cout<<"Progress Report:"<<endl;
         high_resolution_clock::time_point afterWhile;                               //set timer to check progress/ count the report interval; 
-        duration<double> time_span;                                                 //count passed time 
+        duration<double> timeSpan;                                                 //count passed time 
         vector <bool> Done (fileCount);                                                //check task done or not;
+        fill (Done.begin(),Done.begin()+fileCount,false);
         int coutingOf3=1;
-        for (int n = 1; n <= 6000; n++) {
+        
+        while (find(Done.begin(), Done.end(), false) != Done.end() ){
             for (int i = 0; i<fileCount; i++) {
-                if (copyAsync[i].wait_for(chrono::milliseconds(0))==std::future_status::timeout){
-                    Done[i]=false;
+                if(fileProgressReport.currentCopySize(fileName[i]) < fileSize(fileName[i])){
+                    Done[i] = false; 
                 }
                 else {
-                    Done[i]=true;
+                    Done[i] = true; 
                 }
             }
-            if ( find(Done.begin(), Done.end(), false) != Done.end() ){
-                this_thread::sleep_for( chrono::milliseconds(100) );
-                afterWhile = high_resolution_clock::now(); 
-            }
-            else if ( find(Done.begin(), Done.end(), false) == Done.end() ){
-                afterWhile = high_resolution_clock::now(); 
-                cout<<"Upload Completed!"<<endl;
-                break;
-            }
-            time_span = duration_cast<duration<double>>(afterWhile - startTime);
-            
-            if (time_span.count()>(0.3*coutingOf3)){
-                for(auto iter = fileProgressReport.begin(); iter != fileProgressReport.end(); iter++){
+            this_thread::sleep_for( chrono::milliseconds(100) );
+            afterWhile = high_resolution_clock::now(); 
+            timeSpan = duration_cast<duration<double>>(afterWhile - startTime); 
+            if (timeSpan.count()>(0.3*coutingOf3)){
+                map<string, SentingReport> freqReport = fileProgressReport.currentReport();
+                for(auto iter = freqReport.begin(); iter != freqReport.end(); iter++){
                     FileSizeDisplay result = formatedFileSize((iter->second).sentByte); 
                     cout<<iter->first<<" "<<result.fileSizeByte<<result.fileSizeUnit<<'\n';
                 }
-              coutingOf3++;
+                coutingOf3++;
             }
         }
-        cout<<"--------------------\n"<<"Summary:" <<endl;                                                                         
-        for(auto iter = fileProgressReport.begin(); iter != fileProgressReport.end(); iter++){   //summary
-            FileSizeDisplay result = formatedFileSize((iter->second).sentByte);        
-            cout<<iter->first<<" | "<<result.fileSizeByte<<result.fileSizeUnit<<" | ";
-            duration<double> time_span = duration_cast<duration<double>>((iter->second).sentTime - startTime);
-            cout<<time_span.count()<<" sec"<<endl;
-        }
-        cout << "Time Taken: " << time_span.count()<<" sec" <<endl;
-        mtx.unlock();
+        
+        cout<<"Upload Completed!"<<endl;
+        
+        cout<<"--------------------\n"<<"Summary:" <<endl;
+        map<string, SentingReport> finalReport = fileProgressReport.currentReport();
+            for(auto iter = finalReport.begin(); iter != finalReport.end(); iter++){   //summary
+                FileSizeDisplay result = formatedFileSize((iter->second).sentByte);        
+                cout<<iter->first<<" | "<<result.fileSizeByte<<result.fileSizeUnit<<" | ";
+                duration<double> timeSpan = duration_cast<duration<double>>((iter->second).sentTime - startTime);
+                cout<<timeSpan.count()<<" sec"<<endl;
+            }
+        cout << "Time Taken: " << timeSpan.count()<<" sec" <<endl;
+   
     }
     return 0;
 }
