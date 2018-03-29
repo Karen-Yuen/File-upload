@@ -46,7 +46,7 @@ void displayFileInfo (string uploadFile) {
     file.seekg(0, ios::beg);
     char filSig[9];
     file.read(filSig,8);
-    FileSizeDisplay result = formatedFileSize(fileSize);
+    FileSizeDisplay result = FileSizeDisplay::formatedFileSize(fileSize);
     cout << uploadFile << " | "<<result.fileSizeByte<<result.fileSizeUnit<< " |";
     vector<int> myVector (filSig , filSig+8);
     for (vector<int>::iterator it = myVector.begin(); it!=myVector.end(); ++it){
@@ -60,7 +60,12 @@ void displayFileInfo (string uploadFile) {
 
 double fileSize (string uploadFile){
     ifstream file(uploadFile.c_str(), ios::binary|ios::ate);
-    return file.tellg();
+    if(file.is_open()) { 
+       return file.tellg();
+    }
+    else {
+        return 0;
+    }
 }
 
 int copyFile (string source, string dest, ReportOfUpload &fileProgressReport) { // callback progressReport
@@ -153,7 +158,7 @@ int main(int argc, char* argv[]) {
             if (timeSpan.count()>(0.3*coutingOf3)){
                 map<string, SentingReport> freqReport = fileProgressReport.currentReport();
                 for(auto iter = freqReport.begin(); iter != freqReport.end(); iter++){
-                    FileSizeDisplay result = formatedFileSize((iter->second).sentByte); 
+                    FileSizeDisplay result = FileSizeDisplay::formatedFileSize((iter->second).sentByte); 
                     cout<<iter->first<<" "<<result.fileSizeByte<<result.fileSizeUnit<<'\n';
                 }
                 coutingOf3++;
@@ -165,7 +170,7 @@ int main(int argc, char* argv[]) {
         cout<<"--------------------\n"<<"Summary:" <<endl;
         map<string, SentingReport> finalReport = fileProgressReport.currentReport();
             for(auto iter = finalReport.begin(); iter != finalReport.end(); iter++){   //summary
-                FileSizeDisplay result = formatedFileSize((iter->second).sentByte);        
+                FileSizeDisplay result = FileSizeDisplay::formatedFileSize((iter->second).sentByte);        
                 cout<<iter->first<<" | "<<result.fileSizeByte<<result.fileSizeUnit<<" | ";
                 duration<double> timeSpan = duration_cast<duration<double>>((iter->second).sentTime - startTime);
                 cout<<timeSpan.count()<<" sec"<<endl;

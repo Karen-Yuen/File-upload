@@ -24,7 +24,7 @@ typedef map<string, SentingReport> ProgressReport;
 
 class ReportOfUpload {
     public:
-        void writeProgressReport(string fileName, int i){
+        void writeProgressReport(string const& fileName, int i){
             lock_guard<mutex> mLock(mtx);
             report[fileName]={i, std::chrono::high_resolution_clock::now()};
         }
@@ -32,10 +32,10 @@ class ReportOfUpload {
             lock_guard<mutex> mLock(mtx);
             return report;
         }
-        double currentCopySize (string fileName){
+        double currentCopySize (string const& fileName) {
             lock_guard<mutex> mLock(mtx);
             auto iter = report.find(fileName);
-            return (iter->second).sentByte;
+            return iter != report.end() ? (iter->second).sentByte : 0;
         }
         
     private:   

@@ -20,25 +20,25 @@ using namespace std;
 struct FileSizeDisplay {
     double fileSizeByte;
     string fileSizeUnit;
-};
-
-FileSizeDisplay formatedFileSize (double fileSize){
-    double formatedSize;
-    string sizeUnit; 
-    if (fileSize<1024){
-        formatedSize = fileSize;
-        sizeUnit = "bytes";
-    }
-    if (fileSize>1024 && fileSize<1048576){
-        formatedSize = fileSize/1024;
-        sizeUnit = "KB";
-    }
-    if (fileSize>1048576){
-        formatedSize = fileSize/1048576;
-        sizeUnit = "MB";
-    }
+    static FileSizeDisplay formatedFileSize(double fileSize){
+        double formatedSize;
+        string sizeUnit; 
+        if (fileSize<1024){
+            formatedSize = fileSize;
+            sizeUnit = "bytes";
+        }
+        if (fileSize>1024 && fileSize<1048576){
+            formatedSize = fileSize/1024;
+            sizeUnit = "KB";
+        }
+        if (fileSize>1048576){
+            formatedSize = fileSize/1048576;
+            sizeUnit = "MB";
+        }
     return FileSizeDisplay{formatedSize, sizeUnit};
-}
+    }
+
+};
 
 
 #endif /* FILESIZEDISPLAY_HPP */

@@ -4,6 +4,9 @@
     <logicalFolder name="HeaderFiles"
                    displayName="Header Files"
                    projectFiles="true">
+      <itemPath>FileSizeDisplay.hpp</itemPath>
+      <itemPath>ReportOfUpload.hpp</itemPath>
+      <itemPath>SentingReport.hpp</itemPath>
     </logicalFolder>
     <logicalFolder name="ResourceFiles"
                    displayName="Resource Files"
@@ -46,6 +49,12 @@
           </linkerDynSerch>
         </linkerTool>
       </compileType>
+      <item path="FileSizeDisplay.hpp" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="ReportOfUpload.hpp" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="SentingReport.hpp" ex="false" tool="3" flavor2="0">
+      </item>
       <folder path="TestFiles">
         <linkerTool>
           <linkerDynSerch>
@@ -86,6 +95,12 @@
           </linkerDynSerch>
         </linkerTool>
       </compileType>
+      <item path="FileSizeDisplay.hpp" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="ReportOfUpload.hpp" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="SentingReport.hpp" ex="false" tool="3" flavor2="0">
+      </item>
       <folder path="TestFiles">
         <linkerTool>
           <linkerDynSerch>
